@@ -982,20 +982,36 @@ def morning_of_flow() -> None:
     )
     console.print(f"[green]UUIDs regenerated and saved to:[/green] {path}")
 
-    # Step 3: Walk user through capturing a CURL from an available site
+    # Step 3: Capture a cURL from an available site (automated or manual)
     console.print()
-    print_morning_of_guide()
-    console.print("\n[bold cyan]Step 2/3 — Paste your cURL[/bold cyan]")
-    curl_input = read_multiline_input()
-    if not curl_input.strip():
-        console.print("[yellow]No input received. Returning to menu.[/yellow]")
-        return
+    capture_mode = prompt_choice(
+        "Step 2/3 — How would you like to capture your session?",
+        [
+            "Automated  — open a browser window (recommended)",
+            "Manual     — paste a cURL command",
+        ],
+    )
 
-    try:
-        donor = parse_curl(curl_input)
-    except ValueError as e:
-        console.print(f"[red]Error parsing cURL:[/red] {e}")
-        return
+    if capture_mode == 0:
+        console.print("\n[dim]Launching browser — follow the overlay instructions.[/dim]")
+        from siteswiper.browser_capture import capture_commit_curl
+        donor = capture_commit_curl()
+        if donor is None:
+            console.print("[yellow]Browser capture was cancelled or failed. Returning to menu.[/yellow]")
+            return
+        console.print("[green]Request captured successfully.[/green]")
+    else:
+        print_morning_of_guide()
+        console.print("\n[bold cyan]Step 2/3 — Paste your cURL[/bold cyan]")
+        curl_input = read_multiline_input()
+        if not curl_input.strip():
+            console.print("[yellow]No input received. Returning to menu.[/yellow]")
+            return
+        try:
+            donor = parse_curl(curl_input)
+        except ValueError as e:
+            console.print(f"[red]Error parsing cURL:[/red] {e}")
+            return
 
     # Step 4: Refresh cookies from the donor cURL
     console.print("\n[bold cyan]Step 3/3 — Refreshing cookies and attaching pre-commit[/bold cyan]")
