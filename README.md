@@ -33,6 +33,8 @@ Clone the SiteSwiper repository (paste the GitHub link into VS Code's "Clone Rep
 pip install -r requirements.txt
 ```
 
+> **Playwright / Chromium:** SiteSwiper uses a built-in browser to capture session data automatically. The first time you run the tool it will install the Playwright package and download the Chromium browser (~170 MB) automatically — no extra steps needed.
+
 ### Run
 
 ```
@@ -58,11 +60,14 @@ SiteSwiper has **two phases**: setup (done in advance) and morning-of (done befo
   │                         │         │    Flow       │──▶│    fire         │
   │    OR                   │         │               │   │                 │
   │                         │         │  ✓ Fresh UUIDs│   │  T-10s: prewarm │
-  │    Create from template │         │  ✓ Fresh      │   │  T-2s:  spinwait│
-  │    (set your target     │         │    cookies    │   │  T-0:   fire! 🎯│
-  │     site & dates)       │         │  ✓ Pre-commit │   │                 │
-  └─────────────────────────┘         │    attached   │   └────────┬────────┘
-                                      └───────────────┘            │
+  │    Use preset template  │         │  ✓ Session    │   │  T-2s:  spinwait│
+  │    (built-in starting   │         │    captured   │   │  T-0:   fire! 🎯│
+  │     point)              │         │    auto or    │   │                 │
+  │                         │         │    manually   │   └────────┬────────┘
+  │    Create from template │         │  ✓ Pre-commit │            │
+  │    (set your target     │         │    attached   │            │
+  │     site & dates)       │         │               │            │
+  └─────────────────────────┘         └───────────────┘            │
                                                                     ▼
                                                          4. Complete checkout
                                                             in browser
@@ -73,19 +78,27 @@ SiteSwiper has **two phases**: setup (done in advance) and morning-of (done befo
 
 ## Phase 1 — Setup (do this in advance)
 
-### Step 1A — Capture new request (first-time setup)
+### Step 1A — Get a starting request
 
-> **Goal:** Capture a real booking request from your browser so SiteSwiper has the exact format Ontario Parks expects.
+> **Goal:** Give SiteSwiper a booking request in the exact format Ontario Parks expects. There are three ways — pick whichever is easiest.
+
+#### Option A — Use the built-in preset template (easiest, recommended for new users)
+
+Run SiteSwiper and choose **`1 — Use preset template`**. SiteSwiper loads a pre-built request skeleton, walks you through editing the booking fields (dates, site ID, park ID), then saves it. You still need to refresh your session cookies in the Morning-of Flow, but you skip the manual browser capture at this stage.
+
+#### Option B — Capture from your browser manually
+
+Run SiteSwiper and choose **`0 — Capture new request`**, then:
 
 1. Log in to https://reservations.ontarioparks.ca
-2. Navigate to **any available campsite** and select some dates - Mid-week sites at the end of May work well
+2. Navigate to **any available campsite** and select some dates — mid-week sites in May work well
 3. Get to the page where the **"Reserve"** button is visible — **don't click it yet**
 4. Open Developer Tools (`F12`) → **Network** tab → enable **"Preserve log"** → filter to **Fetch/XHR**
-5. In the filter box, type `Method:POST` to show only POST requests and clear the network log right before you hit reserve to make finding the right one easier
+5. In the filter box, type `Method:POST` to show only POST requests; clear the log right before clicking Reserve to make it easier to find
 6. Click **Reserve**
 7. Find the first POST request with **"commit"** in the URL — it will be 3–5 KB in size
 8. Right-click it → **"Copy as cURL (bash)"** (Chrome/Edge) or **"Copy Value > Copy as cURL"** (Firefox)
-9. In SiteSwiper, choose **`0 — Capture new request`** and paste the cURL
+9. Paste the cURL into SiteSwiper
 
 ### Step 1B — Create from template (set your target site and dates)
 
@@ -118,7 +131,7 @@ Run SiteSwiper and choose **`1 — Create from template`**:
 
 > **Goal:** Refresh your session, regenerate IDs, and attach the pre-commit step — all in one pass.
 
-Run SiteSwiper and choose **`2 — Morning-of Flow`**:
+Run SiteSwiper and choose **`3 — Morning-of Flow`**:
 
 ```
   Morning-of Flow does three things automatically:
@@ -126,15 +139,35 @@ Run SiteSwiper and choose **`2 — Morning-of Flow`**:
   Step 1/3 ── Regenerates session UUIDs in your saved request
                (cartUid, bookingUid, resourceBlockerUid, cartTransactionUid)
 
-  Step 2/3 ── You paste one cURL from any available site (guide shown in-app)
+  Step 2/3 ── Captures a fresh session from any available site
+               (automated browser or manual paste — your choice)
                ↳ Refreshes session cookies on your request
                ↳ Syncs the X-XSRF-TOKEN header with the new XSRF-TOKEN cookie
+               ↳ Syncs your personal info (name, phone, address) into the commit body
 
-  Step 3/3 ── Attaches the pasted request as the pre-commit step
+  Step 3/3 ── Attaches the captured request as the pre-commit step
                ↳ Booking fields (site/dates) auto-synced to your original commit request
 ```
 
-**How to get the CURL for Step 2/3:**
+### Step 2/3 — Capture options
+
+When prompted, SiteSwiper asks how you want to capture the session:
+
+#### Option A — Automated (recommended)
+
+Choose **`0 — Automated — open a browser window`**. SiteSwiper:
+
+1. Opens a Chromium browser window on the Ontario Parks site
+2. Displays an overlay in the top-left corner with step-by-step instructions
+3. You navigate to **any available campsite** and stop before clicking Reserve
+4. Click the **"I'm ready"** button in the overlay
+5. Click **Reserve** on the Ontario Parks page
+6. SiteSwiper automatically captures the network request — the overlay confirms success
+7. Leave the browser window open or close it; the terminal continues automatically
+
+#### Option B — Manual (paste cURL)
+
+Choose **`1 — Manual — paste a cURL command`**, then:
 
 1. Go to https://reservations.ontarioparks.ca in your browser (stay logged in)
 2. Open DevTools (`F12`) → **Network** tab → **Preserve log** → filter **Fetch/XHR** → clear the log
@@ -154,7 +187,7 @@ Run SiteSwiper and choose **`2 — Morning-of Flow`**:
 
 ### Step 3 — Schedule and fire 🎯
 
-Run SiteSwiper and choose **`3 — Schedule and fire`**:
+Run SiteSwiper and choose **`4 — Schedule and fire`**:
 
 1. Select your prepared request
 2. Confirm target time (defaults to next 7:00 AM EST)
@@ -181,14 +214,15 @@ After a successful booking, open your browser and complete the checkout process 
 
 ```
   0 — Capture new request      Capture a cURL from your browser (first-time setup)
-  1 — Create from template     Set your target site/dates on a saved template
-  2 — Morning-of Flow          Refresh UUIDs, cookies, and pre-commit in one pass ← booking day
-  3 — Schedule and fire        Countdown + fire at 7:00 AM
+  1 — Use preset template      Start from a built-in request skeleton (no browser capture needed)
+  2 — Create from template     Set your target site/dates on a saved template
+  3 — Morning-of Flow          Refresh UUIDs, cookies, and pre-commit in one pass ← booking day
+  4 — Schedule and fire        Countdown + fire at 7:00 AM
   ─────────────────────────────────────────────────────────────────────────────
-  4 — List saved requests      View and delete saved requests
-  5 — Measure server latency   25 probes over 5 min → recommended pre-fire offset
-  6 — Tools                    Individual utilities (see below)
-  7 — Exit
+  5 — List saved requests      View and delete saved requests
+  6 — Measure server latency   25 probes over 5 min → recommended pre-fire offset
+  7 — Tools                    Individual utilities (see below)
+  8 — Exit
 ```
 
 ### Tools submenu
@@ -273,13 +307,14 @@ If you load a request saved more than 4 hours ago, SiteSwiper warns you. Ontario
 ```
 SiteSwiper/
 ├── siteswiper/
-│   ├── cli.py          — Main menu and workflow orchestration
-│   ├── curl_parser.py  — cURL parser (Chrome & Firefox formats)
-│   ├── display.py      — Rich-based terminal UI
-│   ├── executor.py     — HTTP firing with retries and XSRF sync
-│   ├── storage.py      — Save/load requests as JSON
-│   ├── time_sync.py    — NTP sync + precision countdown
-│   └── config.py       — Configurable constants
+│   ├── cli.py              — Main menu and workflow orchestration
+│   ├── curl_parser.py      — cURL parser (Chrome & Firefox formats)
+│   ├── display.py          — Rich-based terminal UI
+│   ├── executor.py         — HTTP firing with retries and XSRF sync
+│   ├── storage.py          — Save/load requests as JSON
+│   ├── time_sync.py        — NTP sync + precision countdown
+│   ├── browser_capture.py  — Playwright browser automation for automated cURL capture
+│   └── config.py           — Configurable constants
 ├── run.py              — Entry point
 └── requirements.txt
 ```
