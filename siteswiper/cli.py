@@ -15,6 +15,7 @@ from siteswiper.config import (
     DEFAULT_MAX_RETRIES,
     DEFAULT_PREFIRE_OFFSET_MS,
     NTP_SERVERS,
+    PRESET_CURL,
     PREWARM_SECONDS_BEFORE,
     TIMEZONE,
 )
@@ -799,6 +800,48 @@ def add_pre_commit_flow(request_name: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Preset template workflow
+# ---------------------------------------------------------------------------
+
+def preset_template_flow() -> None:
+    """Create a new request starting from the built-in preset template.
+
+    Parses the embedded cURL, walks the user through editing booking fields
+    (dates, site ID, park ID), then saves the result as a named request.
+    The preset cookies are stale — the user must refresh them before firing.
+    """
+    console.print(
+        "\n[bold]Built-in preset template[/bold]\n"
+        "[dim]This is a real captured Ontario Parks cart/commit request. "
+        "You'll customise the dates and target site, then refresh the cookies "
+        "closer to booking time.[/dim]"
+    )
+
+    try:
+        parsed = parse_curl(PRESET_CURL)
+    except ValueError as e:
+        console.print(f"[red]Error loading preset:[/red] {e}")
+        return
+
+    console.print()
+    print_request_summary(parsed)
+
+    console.print(
+        "\n[bold yellow]Note:[/bold yellow] The session cookies embedded in the "
+        "preset are expired. Use [bold]Morning-of Flow[/bold] (or "
+        "[bold]Tools → Refresh cookies[/bold]) to replace them before firing."
+    )
+
+    print_template_guide()
+
+    console.print("\n[bold]Edit request parameters[/bold]")
+    parsed = modify_request(parsed)
+
+    console.print("\n[bold]Save as new request[/bold]")
+    save_flow(parsed)
+
+
+# ---------------------------------------------------------------------------
 # Template workflow
 # ---------------------------------------------------------------------------
 
@@ -1219,6 +1262,7 @@ def latency_probe_flow() -> None:
 MENU_OPTIONS = [
     # --- Primary workflow (in order) ---
     "Capture new request",
+    "Use preset template",
     "Create from template",
     "Morning-of Flow",
     "Schedule and fire",
@@ -1295,25 +1339,28 @@ def main():
                 if parsed:
                     save_flow(parsed)
 
-            elif choice == 1:  # Create from template
+            elif choice == 1:  # Use preset template
+                preset_template_flow()
+
+            elif choice == 2:  # Create from template
                 template_flow()
 
-            elif choice == 2:  # Morning-of Flow
+            elif choice == 3:  # Morning-of Flow
                 morning_of_flow()
 
-            elif choice == 3:  # Schedule and fire
+            elif choice == 4:  # Schedule and fire
                 schedule_flow()
 
-            elif choice == 4:  # List saved requests
+            elif choice == 5:  # List saved requests
                 list_flow()
 
-            elif choice == 5:  # Measure server latency
+            elif choice == 6:  # Measure server latency
                 latency_probe_flow()
 
-            elif choice == 6:  # Tools
+            elif choice == 7:  # Tools
                 tools_flow()
 
-            elif choice == 7:  # Exit
+            elif choice == 8:  # Exit
                 console.print("[dim]Goodbye![/dim]")
                 break
 
