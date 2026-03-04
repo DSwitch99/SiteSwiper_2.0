@@ -15,12 +15,15 @@ from siteswiper.config import (
     DEFAULT_MAX_RETRIES,
     DEFAULT_PREFIRE_OFFSET_MS,
     NTP_SERVERS,
+    PRESET_CURL,
     PREWARM_SECONDS_BEFORE,
     TIMEZONE,
 )
 from siteswiper.curl_parser import (
     apply_op_booking_fields,
+    apply_op_shopper_fields,
     extract_op_booking_fields,
+    extract_op_shopper_fields,
     format_body_params,
     is_op_cart_commit,
     parse_curl,
@@ -799,6 +802,48 @@ def add_pre_commit_flow(request_name: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Preset template workflow
+# ---------------------------------------------------------------------------
+
+def preset_template_flow() -> None:
+    """Create a new request starting from the built-in preset template.
+
+    Parses the embedded cURL, walks the user through editing booking fields
+    (dates, site ID, park ID), then saves the result as a named request.
+    The preset cookies are stale — the user must refresh them before firing.
+    """
+    console.print(
+        "\n[bold]Built-in preset template[/bold]\n"
+        "[dim]This is a real captured Ontario Parks cart/commit request. "
+        "You'll customise the dates and target site, then refresh the cookies "
+        "closer to booking time.[/dim]"
+    )
+
+    try:
+        parsed = parse_curl(PRESET_CURL)
+    except ValueError as e:
+        console.print(f"[red]Error loading preset:[/red] {e}")
+        return
+
+    console.print()
+    print_request_summary(parsed)
+
+    console.print(
+        "\n[bold yellow]Note:[/bold yellow] The session cookies embedded in the "
+        "preset are expired. Use [bold]Morning-of Flow[/bold] (or "
+        "[bold]Tools → Refresh cookies[/bold]) to replace them before firing."
+    )
+
+    print_template_guide()
+
+    console.print("\n[bold]Edit request parameters[/bold]")
+    parsed = modify_request(parsed)
+
+    console.print("\n[bold]Save as new request[/bold]")
+    save_flow(parsed)
+
+
+# ---------------------------------------------------------------------------
 # Template workflow
 # ---------------------------------------------------------------------------
 
@@ -937,20 +982,36 @@ def morning_of_flow() -> None:
     )
     console.print(f"[green]UUIDs regenerated and saved to:[/green] {path}")
 
-    # Step 3: Walk user through capturing a CURL from an available site
+    # Step 3: Capture a cURL from an available site (automated or manual)
     console.print()
-    print_morning_of_guide()
-    console.print("\n[bold cyan]Step 2/3 — Paste your cURL[/bold cyan]")
-    curl_input = read_multiline_input()
-    if not curl_input.strip():
-        console.print("[yellow]No input received. Returning to menu.[/yellow]")
-        return
+    capture_mode = prompt_choice(
+        "Step 2/3 — How would you like to capture your session?",
+        [
+            "Automated  — open a browser window (recommended)",
+            "Manual     — paste a cURL command",
+        ],
+    )
 
-    try:
-        donor = parse_curl(curl_input)
-    except ValueError as e:
-        console.print(f"[red]Error parsing cURL:[/red] {e}")
-        return
+    if capture_mode == 0:
+        console.print("\n[dim]Launching browser — follow the overlay instructions.[/dim]")
+        from siteswiper.browser_capture import capture_commit_curl
+        donor = capture_commit_curl()
+        if donor is None:
+            console.print("[yellow]Browser capture was cancelled or failed. Returning to menu.[/yellow]")
+            return
+        console.print("[green]Request captured successfully.[/green]")
+    else:
+        print_morning_of_guide()
+        console.print("\n[bold cyan]Step 2/3 — Paste your cURL[/bold cyan]")
+        curl_input = read_multiline_input()
+        if not curl_input.strip():
+            console.print("[yellow]No input received. Returning to menu.[/yellow]")
+            return
+        try:
+            donor = parse_curl(curl_input)
+        except ValueError as e:
+            console.print(f"[red]Error parsing cURL:[/red] {e}")
+            return
 
     # Step 4: Refresh cookies from the donor cURL
     console.print("\n[bold cyan]Step 3/3 — Refreshing cookies and attaching pre-commit[/bold cyan]")
@@ -970,6 +1031,16 @@ def morning_of_flow() -> None:
     if new_xsrf:
         parsed.setdefault("headers", {})["X-XSRF-TOKEN"] = new_xsrf
         console.print("[green]X-XSRF-TOKEN header synced.[/green]")
+
+    # Sync personal info (name, phone, address) from pre-commit into commit body
+    shopper_fields = extract_op_shopper_fields(donor.get("body", ""))
+    if shopper_fields and any(v for v in shopper_fields.values() if v):
+        parsed["body"] = apply_op_shopper_fields(parsed.get("body", "{}"), shopper_fields)
+        console.print(
+            f"[green]Personal info synced[/green] from pre-commit "
+            f"([bold]{shopper_fields.get('firstName', '')} "
+            f"{shopper_fields.get('lastName', '')}[/bold])."
+        )
 
     # Step 5: Sync booking fields and attach donor as pre-commit
     commit_fields = extract_op_booking_fields(parsed.get("body", ""))
@@ -1219,6 +1290,7 @@ def latency_probe_flow() -> None:
 MENU_OPTIONS = [
     # --- Primary workflow (in order) ---
     "Capture new request",
+    "Use preset template",
     "Create from template",
     "Morning-of Flow",
     "Schedule and fire",
@@ -1282,6 +1354,9 @@ def main():
     """Main entry point for SiteSwiper."""
     print_banner()
 
+    from siteswiper.browser_capture import ensure_playwright
+    ensure_playwright()
+
     while True:
         try:
             choice = prompt_choice("What would you like to do?", MENU_OPTIONS)
@@ -1295,25 +1370,28 @@ def main():
                 if parsed:
                     save_flow(parsed)
 
-            elif choice == 1:  # Create from template
+            elif choice == 1:  # Use preset template
+                preset_template_flow()
+
+            elif choice == 2:  # Create from template
                 template_flow()
 
-            elif choice == 2:  # Morning-of Flow
+            elif choice == 3:  # Morning-of Flow
                 morning_of_flow()
 
-            elif choice == 3:  # Schedule and fire
+            elif choice == 4:  # Schedule and fire
                 schedule_flow()
 
-            elif choice == 4:  # List saved requests
+            elif choice == 5:  # List saved requests
                 list_flow()
 
-            elif choice == 5:  # Measure server latency
+            elif choice == 6:  # Measure server latency
                 latency_probe_flow()
 
-            elif choice == 6:  # Tools
+            elif choice == 7:  # Tools
                 tools_flow()
 
-            elif choice == 7:  # Exit
+            elif choice == 8:  # Exit
                 console.print("[dim]Goodbye![/dim]")
                 break
 
