@@ -21,7 +21,9 @@ from siteswiper.config import (
 )
 from siteswiper.curl_parser import (
     apply_op_booking_fields,
+    apply_op_shopper_fields,
     extract_op_booking_fields,
+    extract_op_shopper_fields,
     format_body_params,
     is_op_cart_commit,
     parse_curl,
@@ -1013,6 +1015,16 @@ def morning_of_flow() -> None:
     if new_xsrf:
         parsed.setdefault("headers", {})["X-XSRF-TOKEN"] = new_xsrf
         console.print("[green]X-XSRF-TOKEN header synced.[/green]")
+
+    # Sync personal info (name, phone, address) from pre-commit into commit body
+    shopper_fields = extract_op_shopper_fields(donor.get("body", ""))
+    if shopper_fields and any(v for v in shopper_fields.values() if v):
+        parsed["body"] = apply_op_shopper_fields(parsed.get("body", "{}"), shopper_fields)
+        console.print(
+            f"[green]Personal info synced[/green] from pre-commit "
+            f"([bold]{shopper_fields.get('firstName', '')} "
+            f"{shopper_fields.get('lastName', '')}[/bold])."
+        )
 
     # Step 5: Sync booking fields and attach donor as pre-commit
     commit_fields = extract_op_booking_fields(parsed.get("body", ""))

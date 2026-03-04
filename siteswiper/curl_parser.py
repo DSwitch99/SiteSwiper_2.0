@@ -275,6 +275,82 @@ def apply_op_booking_fields(body: str, fields: dict) -> str:
     return json.dumps(data, separators=(",", ":"))
 
 
+def extract_op_shopper_fields(body: str) -> dict | None:
+    """Extract personal info fields from an Ontario Parks cart body.
+
+    Returns a dict with keys:
+        firstName, lastName, email,
+        primaryPhoneNumber, primaryCountryCode,
+        streetAddress, city, region, regionCode, country
+    or None if the body doesn't have the expected shopper structure.
+    """
+    try:
+        data = json.loads(body)
+        cart = data.get("cart", data)
+        current = (cart.get("shopper") or {}).get("currentVersion") or {}
+        if not current:
+            return None
+        phone = current.get("phoneNumbers") or {}
+        addresses = current.get("addresses") or []
+        addr = addresses[0] if addresses else {}
+        return {
+            "firstName": current.get("firstName", ""),
+            "lastName": current.get("lastName", ""),
+            "email": current.get("email", ""),
+            "primaryPhoneNumber": phone.get("primaryPhoneNumber", ""),
+            "primaryCountryCode": phone.get("primaryCountryCode"),
+            "streetAddress": addr.get("streetAddress", ""),
+            "city": addr.get("city", ""),
+            "region": addr.get("region", ""),
+            "regionCode": addr.get("regionCode", ""),
+            "country": addr.get("country", ""),
+        }
+    except Exception:
+        return None
+
+
+def apply_op_shopper_fields(body: str, fields: dict) -> str:
+    """Write personal info into all relevant locations in a cart commit body.
+
+    Updates:
+      - cart.shopper.currentVersion  (name, email, phone, address)
+      - cart.bookings[0].newVersion.occupant  (firstName, lastName)
+
+    Returns compact JSON string.
+    """
+    data = json.loads(body)
+    cart = data.get("cart", data)
+
+    # shopper.currentVersion
+    current = (cart.get("shopper") or {}).get("currentVersion")
+    if isinstance(current, dict):
+        current["firstName"] = fields.get("firstName", "")
+        current["lastName"] = fields.get("lastName", "")
+        current["email"] = fields.get("email", "")
+        phone = current.get("phoneNumbers")
+        if isinstance(phone, dict):
+            phone["primaryPhoneNumber"] = fields.get("primaryPhoneNumber", "")
+            phone["primaryCountryCode"] = fields.get("primaryCountryCode")
+        addresses = current.get("addresses")
+        if addresses:
+            a = addresses[0]
+            a["streetAddress"] = fields.get("streetAddress", "")
+            a["city"] = fields.get("city", "")
+            a["region"] = fields.get("region", "")
+            a["regionCode"] = fields.get("regionCode", "")
+            a["country"] = fields.get("country", "")
+
+    # occupant in first booking
+    bookings = cart.get("bookings") or []
+    if bookings:
+        occupant = (bookings[0].get("newVersion") or {}).get("occupant")
+        if isinstance(occupant, dict):
+            occupant["firstName"] = fields.get("firstName", "")
+            occupant["lastName"] = fields.get("lastName", "")
+
+    return json.dumps(data, separators=(",", ":"))
+
+
 def regenerate_op_session_uuids(body: str) -> tuple[str, dict[str, str]]:
     """Regenerate the 4 groups of session UUIDs in an Ontario Parks cart body.
 
