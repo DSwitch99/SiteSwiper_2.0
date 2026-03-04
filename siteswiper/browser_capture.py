@@ -6,6 +6,7 @@ navigate to an available campsite, then intercepts the POST to
 
 Public API
 ----------
+    ensure_playwright() -> None      # call at startup
     capture_commit_curl() -> dict | None
 
 Returns a dict in exactly the same format as parse_curl(), or None if the
@@ -16,7 +17,91 @@ the user to close manually after capture.
 from __future__ import annotations
 
 import asyncio
+import os
+import subprocess
+import sys
+from pathlib import Path
 from urllib.parse import urlparse
+
+
+# ---------------------------------------------------------------------------
+# Startup: ensure playwright package + Chromium binary are present
+# ---------------------------------------------------------------------------
+
+def _playwright_browsers_path() -> Path:
+    """Return the directory where Playwright stores browser binaries.
+
+    Mirrors Playwright's own resolution order:
+      1. PLAYWRIGHT_BROWSERS_PATH env var
+      2. Platform default (~/.cache/ms-playwright on Linux, etc.)
+    """
+    custom = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if custom:
+        return Path(custom)
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(local) / "ms-playwright"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "ms-playwright"
+    return Path.home() / ".cache" / "ms-playwright"
+
+
+def _chromium_is_installed() -> bool:
+    """Return True if a Playwright-managed Chromium directory exists on disk."""
+    try:
+        browsers = _playwright_browsers_path()
+        return browsers.exists() and any(
+            d.is_dir() and d.name.startswith("chromium")
+            for d in browsers.iterdir()
+        )
+    except Exception:
+        return False
+
+
+def ensure_playwright() -> None:
+    """Ensure the playwright package and Chromium browser are installed.
+
+    Called once at startup.  Both steps are skipped when already satisfied,
+    so this is essentially free on subsequent runs.
+    """
+    from siteswiper.display import console
+
+    # Step 1: Python package
+    try:
+        import playwright  # noqa: F401
+    except ImportError:
+        console.print("[dim]First-time setup: installing playwright...[/dim]")
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "playwright"],
+                check=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            console.print(
+                f"[red]Could not install playwright:[/red] "
+                f"{exc.stderr.decode(errors='replace').strip()}\n"
+                "[dim]Run manually:  pip install playwright[/dim]"
+            )
+            return
+
+    # Step 2: Chromium binary
+    if not _chromium_is_installed():
+        console.print(
+            "[dim]First-time setup: downloading Chromium browser "
+            "(one-time, ~170 MB)...[/dim]"
+        )
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "playwright", "install", "chromium"],
+                check=True,
+            )
+            console.print("[green]Chromium installed.[/green]\n")
+        except subprocess.CalledProcessError as exc:
+            console.print(
+                f"[red]Could not install Chromium:[/red] {exc}\n"
+                "[dim]Run manually:  python -m playwright install chromium[/dim]"
+            )
 
 
 # ---------------------------------------------------------------------------

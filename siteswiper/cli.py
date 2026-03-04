@@ -1354,6 +1354,9 @@ def main():
     """Main entry point for SiteSwiper."""
     print_banner()
 
+    from siteswiper.browser_capture import ensure_playwright
+    ensure_playwright()
+
     while True:
         try:
             choice = prompt_choice("What would you like to do?", MENU_OPTIONS)
