@@ -291,11 +291,15 @@ async def _build_request_dict(request) -> dict:
     raw_headers = await request.all_headers()
     headers = _normalise_headers(raw_headers)
 
-    # Drop Accept-Encoding so httpx manages compression automatically.
-    # Playwright captures the browser's literal Accept-Encoding header
-    # (e.g. "gzip, deflate, br, zstd"). If we forward it, httpx treats
-    # decompression as the caller's responsibility and returns raw gzip bytes.
+    # Drop headers that httpx must own / compute itself.
+    # Accept-Encoding: if forwarded, httpx stops auto-decompressing and the
+    # caller receives raw gzip bytes instead of text.
+    # Content-Length: the captured value reflects the body at browser-capture
+    # time. morning_of_flow() modifies the body (booking field sync, UUID
+    # regeneration) before firing, so the captured length is stale. httpx
+    # always computes Content-Length from the actual bytes passed as content=.
     headers.pop("Accept-Encoding", None)
+    headers.pop("Content-Length", None)
 
     # Extract cookies from the Cookie header (lowercase key from Playwright)
     cookie_str = raw_headers.get("cookie", "")

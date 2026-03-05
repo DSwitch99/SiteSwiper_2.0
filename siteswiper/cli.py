@@ -1060,6 +1060,14 @@ def morning_of_flow() -> None:
             "verify dates/site are correct.[/dim]"
         )
 
+    # Regenerate UUIDs in the donor before saving it as pre-commit.
+    # Playwright captures the browser's actual request passively — the browser
+    # simultaneously fires the same request to Ontario Parks, creating server-side
+    # records for those UUIDs. Firing the donor again with the same UUIDs would
+    # produce a 400 (cart/blocker already exists). Fresh UUIDs avoid the clash.
+    console.print("[dim]Regenerating UUIDs in pre-commit request...[/dim]")
+    _regenerate_uuids(donor)
+
     path = save_request(
         data["name"],
         parsed,
