@@ -17,9 +17,11 @@ the user to close manually after capture.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -289,6 +291,12 @@ async def _build_request_dict(request) -> dict:
     raw_headers = await request.all_headers()
     headers = _normalise_headers(raw_headers)
 
+    # Drop Accept-Encoding so httpx manages compression automatically.
+    # Playwright captures the browser's literal Accept-Encoding header
+    # (e.g. "gzip, deflate, br, zstd"). If we forward it, httpx treats
+    # decompression as the caller's responsibility and returns raw gzip bytes.
+    headers.pop("Accept-Encoding", None)
+
     # Extract cookies from the Cookie header (lowercase key from Playwright)
     cookie_str = raw_headers.get("cookie", "")
     cookies = _parse_cookie_header(cookie_str)
@@ -306,11 +314,48 @@ async def _build_request_dict(request) -> dict:
         "headers": headers,
         "cookies": cookies,
         "body": body,
-        "compressed": False,
+        "compressed": True,   # let httpx handle decompression automatically
         "verify_ssl": True,
         "host": parsed_url.hostname,
         "path": parsed_url.path,
     }
+
+
+# ---------------------------------------------------------------------------
+# Capture log
+# ---------------------------------------------------------------------------
+
+def _save_capture_log(result: dict) -> None:
+    """Persist the captured request dict to ~/.siteswiper/logs/captures/.
+
+    The log file contains the full parse_curl()-compatible dict (headers,
+    cookies, body) so that the capture can be inspected or replayed manually
+    if a booking attempt fails.  Errors are silently ignored so a logging
+    failure never aborts the capture.
+    """
+    try:
+        from siteswiper.config import LOG_DIR
+        from siteswiper.display import console
+
+        captures_dir = LOG_DIR / "captures"
+        captures_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        log_file = captures_dir / f"capture_{timestamp}.json"
+
+        log_entry = {
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "source": "playwright_browser_capture",
+            "request": result,
+        }
+        with open(log_file, "w", encoding="utf-8") as f:
+            json.dump(log_entry, f, indent=2, ensure_ascii=False)
+
+        console.print(
+            f"[dim]Capture saved → {log_file}[/dim]"
+        )
+    except Exception:
+        pass  # logging is best-effort
 
 
 # ---------------------------------------------------------------------------
@@ -420,6 +465,9 @@ async def _capture_async() -> dict | None:
 
         # Build the result dict while the browser is still alive.
         result = await _build_request_dict(captured_request)
+
+        # Save the captured request to a log file for troubleshooting.
+        _save_capture_log(result)
 
         # Transition overlay to "Captured!" state and leave browser open.
         try:

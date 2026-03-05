@@ -96,7 +96,7 @@ class RequestExecutor:
             log_entry["server_timestamp"] = server_ts
             log_entry["server_delta_ms"] = server_delta_ms
         log_file = log_dir / f"attempt_{attempt}.json"
-        with open(log_file, "w") as f:
+        with open(log_file, "w", encoding="utf-8") as f:
             json.dump(log_entry, f, indent=2, ensure_ascii=False)
 
     def _log_error(self, attempt: int, elapsed_ms: float, error: str) -> None:
@@ -115,7 +115,7 @@ class RequestExecutor:
             "error": error,
         }
         log_file = log_dir / f"attempt_{attempt}.json"
-        with open(log_file, "w") as f:
+        with open(log_file, "w", encoding="utf-8") as f:
             json.dump(log_entry, f, indent=2, ensure_ascii=False)
 
     def prewarm(self) -> bool:
