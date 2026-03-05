@@ -16,6 +16,7 @@ the user to close manually after capture.
 
 from __future__ import annotations
 
+import atexit
 import asyncio
 import json
 import os
@@ -24,6 +25,39 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
+
+
+# ---------------------------------------------------------------------------
+# Playwright lifecycle — kept alive across the session, stopped at exit
+# ---------------------------------------------------------------------------
+
+# Holds the AsyncPlaywright instance while the browser window is open.
+# Stored at module level so the atexit handler can reach it.
+_active_playwright = None
+
+
+def _stop_playwright_at_exit() -> None:
+    """atexit handler: stop the Playwright driver cleanly when Python exits.
+
+    The browser window is intentionally left open after capture so the user
+    can browse freely.  We still need to stop the underlying Playwright
+    Node.js subprocess cleanly — otherwise Python emits a ResourceWarning
+    about an unclosed asyncio transport, and Node.js emits EPIPE when it
+    tries to write one last event back through the already-closed pipe.
+    """
+    global _active_playwright
+    if _active_playwright is None:
+        return
+    try:
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(_active_playwright.stop())
+        loop.close()
+    except Exception:
+        pass
+    _active_playwright = None
+
+
+atexit.register(_stop_playwright_at_exit)
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +423,9 @@ async def _capture_async() -> dict | None:
     # API calls the site makes during normal navigation.
     window_ready: list[bool] = [False]
 
+    global _active_playwright
     playwright_obj = await async_playwright().start()
+    _active_playwright = playwright_obj  # atexit handler will stop it at program exit
 
     try:
         try:
@@ -489,6 +525,7 @@ async def _capture_async() -> dict | None:
             await playwright_obj.stop()
         except Exception:
             pass
+        _active_playwright = None
         raise
 
 
